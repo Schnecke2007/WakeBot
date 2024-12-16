@@ -1,0 +1,350 @@
+<html><head><base href=""/>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WakeBot - Intelligenter Wecker</title>
+<style>
+  body {
+    font-family: Arial, sans-serif;
+    background: linear-gradient(45deg, #1a1a1a, #2a2a2a);
+    color: #fff;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    margin: 0;
+  }
+
+  h1 {
+    font-size: 3em;
+    margin-bottom: 20px;
+    color: #4CAF50;
+    text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+  }
+
+  .settings-btn {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    background: #4CAF50;
+    border: none;
+    padding: 10px;
+    border-radius: 50%;
+    cursor: pointer;
+    color: white;
+  }
+
+  .settings-panel {
+    display: none;
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: #303030;
+    padding: 20px;
+    border-radius: 10px;
+    z-index: 1000;
+    width: 300px;
+  }
+
+  .settings-panel.active {
+    display: block;
+  }
+
+  .settings-panel label {
+    display: block;
+    margin: 10px 0;
+  }
+
+  .settings-panel select,
+  .settings-panel input {
+    width: 100%;
+    padding: 5px;
+    margin-top: 5px;
+    background: #404040;
+    border: none;
+    color: white;
+    border-radius: 5px;
+  }
+
+  .clock-container {
+    background: #303030;
+    border-radius: 50%;
+    width: 300px;
+    height: 300px;
+    position: relative;
+    box-shadow: 0 0 20px rgba(0,0,0,0.5);
+    padding: 20px;
+  }
+
+  .digital-time {
+    position: absolute;
+    top: 40%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 2.5em;
+    font-weight: bold;
+    color: #4CAF50;
+  }
+
+  .controls {
+    position: absolute;
+    bottom: 20%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 80%;
+    text-align: center;
+  }
+
+  input[type="time"] {
+    background: #404040;
+    border: none;
+    padding: 5px;
+    color: #fff;
+    margin-bottom: 10px;
+    border-radius: 5px;
+  }
+
+  button {
+    background: #4CAF50;
+    border: none;
+    padding: 8px 15px;
+    color: white;
+    border-radius: 5px;
+    cursor: pointer;
+    margin: 5px;
+    transition: background 0.3s;
+  }
+
+  button:hover {
+    background: #45a049;
+  }
+
+  .alarms-list {
+    position: absolute;
+    top: 110%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 100%;
+    max-height: 200px;
+    overflow-y: auto;
+    background: #303030;
+    border-radius: 10px;
+    padding: 10px;
+  }
+
+  .alarm-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 5px;
+    border-bottom: 1px solid #404040;
+  }
+
+  .overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 999;
+  }
+
+  .overlay.active {
+    display: block;
+  }
+</style>
+</head>
+<body>
+<h1>WakeBot</h1>
+<button class="settings-btn" onclick="toggleSettings()">⚙️</button>
+<div class="clock-container">
+  <div class="digital-time" id="current-time">00:00:00</div>
+  <div class="controls">
+    <input type="time" id="alarm-time">
+    <button onclick="setAlarm()">Wecker stellen</button>
+  </div>
+  <div class="alarms-list" id="alarms-list"></div>
+</div>
+
+<div class="overlay" id="overlay"></div>
+<div class="settings-panel" id="settings-panel">
+  <h2>Einstellungen</h2>
+  <label>
+    Zeitzone
+    <select id="timezone" onchange="saveSettings()">
+      <option value="auto">Automatisch erkennen</option>
+    </select>
+  </label>
+  <label>
+    Hintergrundfarbe
+    <input type="color" id="bgColor" onchange="saveSettings()" value="#303030">
+  </label>
+  <label>
+    Ziffernfarbe
+    <input type="color" id="digitColor" onchange="saveSettings()" value="#4CAF50">
+  </label>
+  <button onclick="resetSettings()">Zurücksetzen</button>
+  <button onclick="toggleSettings()">Schließen</button>
+</div>
+
+<script>
+let alarms = JSON.parse(localStorage.getItem('alarms')) || [];
+const systemTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+let settings = JSON.parse(localStorage.getItem('settings')) || {
+  timezone: 'auto',
+  bgColor: '#303030',
+  digitColor: '#4CAF50'
+};
+
+function loadTimezones() {
+  const timezoneSelect = document.getElementById('timezone');
+  timezoneSelect.innerHTML = '<option value="auto">Automatisch erkennen</option>';
+  
+  Intl.supportedValuesOf('timeZone').forEach(timezone => {
+    const option = document.createElement('option');
+    option.value = timezone;
+    option.text = timezone;
+    if (timezone === settings.timezone) {
+      option.selected = true;
+    }
+    timezoneSelect.appendChild(option);
+  });
+
+  if (settings.timezone === 'auto') {
+    timezoneSelect.value = 'auto';
+  }
+}
+
+function getCurrentTimezone() {
+  return settings.timezone === 'auto' ? systemTimezone : settings.timezone;
+}
+
+function toggleSettings() {
+  document.getElementById('settings-panel').classList.toggle('active');
+  document.getElementById('overlay').classList.toggle('active');
+}
+
+function saveSettings() {
+  settings = {
+    timezone: document.getElementById('timezone').value,
+    bgColor: document.getElementById('bgColor').value,
+    digitColor: document.getElementById('digitColor').value
+  };
+  localStorage.setItem('settings', JSON.stringify(settings));
+  applySettings();
+}
+
+function resetSettings() {
+  settings = {
+    timezone: 'auto',
+    bgColor: '#303030',
+    digitColor: '#4CAF50'
+  };
+  document.getElementById('timezone').value = settings.timezone;
+  document.getElementById('bgColor').value = settings.bgColor;
+  document.getElementById('digitColor').value = settings.digitColor;
+  localStorage.setItem('settings', JSON.stringify(settings));
+  applySettings();
+}
+
+function applySettings() {
+  const clockContainer = document.querySelector('.clock-container');
+  const digitalTime = document.querySelector('.digital-time');
+  clockContainer.style.background = settings.bgColor;
+  digitalTime.style.color = settings.digitColor;
+}
+
+function getDaytime(hours) {
+  if (hours >= 5 && hours < 12) return "morgens";
+  if (hours >= 12 && hours < 14) return "mittags";
+  if (hours >= 14 && hours < 18) return "nachmittags";
+  if (hours >= 18 && hours < 22) return "abends";
+  if (hours >= 22 || hours < 5) return "nachts";
+  return "";
+}
+
+function updateTime() {
+  const now = new Date(new Date().toLocaleString('en-US', { timeZone: getCurrentTimezone() }));
+  const timeString = now.toLocaleTimeString();
+  document.getElementById('current-time').textContent = timeString;
+  checkAlarms(now);
+}
+
+function setAlarm() {
+  const timeInput = document.getElementById('alarm-time');
+  if (timeInput.value) {
+    const alarm = {
+      time: timeInput.value,
+      id: Date.now()
+    };
+    alarms.push(alarm);
+    localStorage.setItem('alarms', JSON.stringify(alarms));
+    displayAlarms();
+    timeInput.value = '';
+  }
+}
+
+function displayAlarms() {
+  const alarmsList = document.getElementById('alarms-list');
+  alarmsList.innerHTML = '';
+  
+  alarms.forEach(alarm => {
+    const alarmDiv = document.createElement('div');
+    alarmDiv.className = 'alarm-item';
+    alarmDiv.innerHTML = `
+      <span>${alarm.time}</span>
+      <button onclick="deleteAlarm(${alarm.id})">Löschen</button>
+    `;
+    alarmsList.appendChild(alarmDiv);
+  });
+}
+
+function deleteAlarm(id) {
+  alarms = alarms.filter(alarm => alarm.id !== id);
+  localStorage.setItem('alarms', JSON.stringify(alarms));
+  displayAlarms();
+}
+
+function checkAlarms(now) {
+  const currentHour = now.getHours().toString().padStart(2, '0');
+  const currentMinute = now.getMinutes().toString().padStart(2, '0');
+  const currentTime = `${currentHour}:${currentMinute}`;
+  
+  alarms.forEach(alarm => {
+    if (alarm.time === currentTime) {
+      triggerAlarm(now);
+      deleteAlarm(alarm.id);
+    }
+  });
+}
+
+function triggerAlarm(now) {
+  const timeString = now.toLocaleTimeString();
+  const daytime = getDaytime(now.getHours());
+  const url = `https://chatgpt.com/?q=Erstelle eine freundliche Begrüßungsnachricht für jemanden der gerade ${daytime} um ${timeString} aufwacht.`;
+  
+  if (navigator.vibrate) {
+    navigator.vibrate([1000, 500, 1000]);
+  }
+  
+  window.open(url, '_blank');
+}
+
+// Initialisierung
+loadTimezones();
+applySettings();
+setInterval(updateTime, 1000);
+displayAlarms();
+
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js').then(function(registration) {
+    console.log('ServiceWorker registration successful');
+  }).catch(function(err) {
+    console.log('ServiceWorker registration failed: ', err);
+  });
+}
+</script>
+</body></html>
